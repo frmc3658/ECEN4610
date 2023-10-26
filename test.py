@@ -1,3 +1,4 @@
+# Script to test if OpenCV was installed properly
 import cv2
 import numpy as np
 

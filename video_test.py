@@ -8,7 +8,7 @@ if not cap.isOpened():
     print("Error opening the camera.")
 else:
     while True:
-        # Read a frame from the camera
+        # Read a frame from the camera.
         ret, frame = cap.read()
 
         if not ret:
