@@ -15,6 +15,8 @@ else:
     while vid_capture.isOpened():
         ret, frame = vid_capture.read()
         if ret:
+            fps = int(vid_capture.get(cv2.CAP_PROP_FPS))
+            print("Frame Rate:", fps, "FPS")
             cv2.imshow('Frame', frame)
             k = cv2.waitKey(20)
             if k == 113:  # 'q' key to exit
