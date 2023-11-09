@@ -56,3 +56,4 @@ else:
 
     vid_capture.release()
     cv2.destroyAllWindows()
+ 

@@ -11,7 +11,7 @@ if not vid_capture.isOpened():
 else:
     # Define the ArUco dictionary and parameters
     aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_5X5_100)
-    aruco_params = aruco.DetectorParameters()
+    aruco_params = aruco.DetectorParameters_create()
 
     while vid_capture.isOpened():
         ret, frame = vid_capture.read()
@@ -39,7 +39,7 @@ else:
 
                         # Draw a line from the crosshair to the marker
                         cv2.line(frame, (crosshair_x, crosshair_y), (marker_center_x, marker_center_y), (255, 0, 0), 2)
-
+            frame = cv2.flip(frame, 1)
             cv2.imshow('Frame', frame)
             k = cv2.waitKey(20)
             if k == 113:  # 'q' key to exit
