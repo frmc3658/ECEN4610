@@ -1,7 +1,6 @@
-//Define Pins
-#define laser_control_pin 18
-
 #include <vector>
+
+#define laser_control_pin 18
 
 void setup() {
   // put your setup code here, to run once:
