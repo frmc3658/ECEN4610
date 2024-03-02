@@ -1,10 +1,10 @@
 // Pin Definitions
-#define stepPin 2
-#define dirPin 5
-#define potPin A5
-#define MS1pin 13
-#define MS2pin 12
-#define MS3pin 11
+#define stepPin 15
+#define dirPin 16
+//#define potPin A5
+#define MS1pin 7   
+#define MS2pin 5
+#define MS3pin 6
 
 
 // PID variables (adjust these to fine-tune)
@@ -20,11 +20,10 @@ double integral = 0;
 int setPoint = 0;
 
 bool lastDirection = 0;
-int cycles = 0;
+int scanCounter = 0;
 
 void setup() {
-  Serial.begin(9600);
-
+  Serial.begin(115200);
   // Set pins as Outputs
   pinMode(stepPin, OUTPUT);
   pinMode(dirPin, OUTPUT);
@@ -55,9 +54,9 @@ void loop() {
     // Control stepper motor based on PID output
     controlStepper(pidOutput);
   }
-  else{
-    findMarkerX();
-  }
+//  else{
+//    findMarkerX();
+//  }
 }
 
 // Function to calculate PID output
@@ -123,28 +122,26 @@ void controlStepper(int stepSize) {
     digitalWrite(stepPin, LOW);
     delayMicroseconds(len);
   }
+
+  
 }
 
 void findMarkerX(){
+  // Adjust scanning parameters based on scan counter
+  int tick = 16; // Default step size
+  int len = 1200; // Default step duration
 
-  if(cycles > 20){
-    cycles = 0;
-    digitalWrite(dirPin, lastDirection);
-  }
-  else if(cycles > 10 && cycles < 20){ // adjust this after testing   
-    // Use opposite direction from last seen frame
+  if (scanCounter > 50 && scanCounter < 100) {
+    // Reverse direction for smoother scanning
     digitalWrite(dirPin, !lastDirection);
+  } else if (scanCounter >= 100) {
+    // Marker not found within reasonable scans, handle error or fallback
+    // stop scanning and return to main loop
+    scanCounter = 0; // Reset scan counter
+    return;
   }
-  else{
-    // Use last direction from last seen frame
-    digitalWrite(dirPin, lastDirection);
-  }
-  
-  // Set ticks and length
-  tick = 4;
-  len = 410;
 
-  // Pulse StepPin 
+  // Pulse StepPin
   for (int i = 0; i < abs(tick); ++i) {
     digitalWrite(stepPin, HIGH);
     delayMicroseconds(len);
@@ -152,9 +149,11 @@ void findMarkerX(){
     delayMicroseconds(len);
   }
 
-  cycles++;
-  
+  // Update scanning parameters and counters
+  lastDirection = !lastDirection; // Toggle direction for next scan
+  scanCounter++;
 }
+
 
 // Custom Functions for Step Sizes
 void fullStep(){
