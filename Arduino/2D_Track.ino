@@ -1,3 +1,13 @@
+#include "esp32-hal-timer.h"
+
+volatile bool azTick = false;
+volatile bool altTick = false;
+
+hw_timer_t* azTimer = NULL;
+hw_timer_t* altTimer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+
 // Pin Definitions
 #define stepPinAZ 15
 #define dirPinAZ 3
@@ -8,16 +18,14 @@
 #define MS2pin 5
 #define MS3pin 6
 
+static int MAX_INTERVAL = 250000;
 
 // PID variables (adjust these to fine-tune)
-double Kp = 1.0;  // Proportional gain
+double Kp = 0.25;  // Proportional gain
 double Ki = 0.01;  // Integral gain
 double Kd = 0.1;  // Derivative gain
-int len = 1670; //ms
-int tick = 0;
 
-int len1 = 2000; //ms
-int tick1 = 0;
+int k = 15;
 
 double previousErrorX = 0;
 double integralX = 0;
@@ -28,6 +36,22 @@ int setPoint = 0;
 
 bool lastDirection = 0;
 int scanCounter = 0;
+
+void IRAM_ATTR AzTimer() {
+  portENTER_CRITICAL_ISR(&timerMux);
+  //Serial.println("Az Tick!");
+  azTick = !azTick;
+  digitalWrite(stepPinAZ, azTick ? HIGH : LOW);
+  portEXIT_CRITICAL_ISR(&timerMux);
+}
+
+void IRAM_ATTR AltTimer() {
+  portENTER_CRITICAL_ISR(&timerMux);
+  //Serial.println("Alt Tick!");
+  altTick = !altTick;
+  digitalWrite(stepPinALT, altTick ? HIGH : LOW);
+  portEXIT_CRITICAL_ISR(&timerMux);
+}
 
 void setup() {
   Serial.begin(115200);
@@ -42,10 +66,22 @@ void setup() {
   pinMode(MS2pin, OUTPUT);
   pinMode(MS3pin, OUTPUT);
 
-  // Initialize as 16th step
-  digitalWrite(MS1pin, HIGH);
-  digitalWrite(MS2pin, HIGH);
-  digitalWrite(MS3pin, HIGH);
+  
+  // setupAzTimer(1000000);
+  azTimer = timerBegin(0, 80, true); 
+  //Serial.println("HereAZ1");
+  timerAttachInterrupt(azTimer, &AzTimer, true);
+  //Serial.println("HereAZ"); 
+  timerAlarmWrite(azTimer, 1000000, true);
+  timerAlarmEnable(azTimer);
+  
+  // setupAltTimer(1000000);
+  altTimer = timerBegin(1, 80, true);
+  timerAttachInterrupt(altTimer, &AltTimer, true);
+  timerAlarmWrite(altTimer, intervalAlt, true);
+  //Serial.println("HereALT"); 
+  timerAlarmEnable(altTimer);
+  
 }
 
 void loop() {
@@ -120,91 +156,41 @@ int calculatePIDY(int currentError) {
   return static_cast<int>(outputY);
 }
 
-// Function to control the stepper motor based on the step size
-void controlStepperAZ(int stepSize) {
-  // Determine the appropriate step mode based on step size
-  fullStep();
-  if (abs(stepSize) < 8) {
-    tick = 0;
-    len = 0;
-  } else if (abs(stepSize) < 32) {
-    tick = 1;
-    len = 327;
-  } else if (abs(stepSize) < 64) {
-    tick = 2;
-    len = 410;
-  } else if (abs(stepSize) < 128) {
-    tick = 4;
-    len = 633;
+// Function to control the stepper motor based on the frequency
+void controlStepperAZ(int pidOutputAZ) {
+  
+  digitalWrite(dirPinAZ, (pidOutputAZ >= 0) ? HIGH : LOW);
+  
+  if(pidOutputAZ < 4){
+    
   }
-  // else if (abs(stepSize) < 1024) {
-  //   tick = 16;
-  //   len = 2000;
-  // }
-  else {
-    tick = 8;
-    len = 1200;
-  }
+  float k = 0.5;
+  //float azFreq = 600 * (1 - exp(-k * abs(pidOutputAZ))); // Calculate azimuth frequency
+  float azFreq = (abs(pidOutputAZ) / 100.0) * 500;  
+  float intervalAZ = (azFreq > 0) ? 1000000 / azFreq : MAX_INTERVAL;
+  Serial.print("Az Frequency: ");
+  Serial.println(azFreq);
 
-  // Set the direction based on the sign of stepSize
-  digitalWrite(dirPinAZ, (stepSize >= 0) ? HIGH : LOW);
-
-  // store the last used direction
-  lastDirection = stepSize >= 0 ? HIGH : LOW;
-
-  // Perform the steps
-  for (int i = 0; i < abs(tick); ++i) {
-    digitalWrite(stepPinAZ, HIGH);
-    delayMicroseconds(len);
-    digitalWrite(stepPinAZ, LOW);
-    delayMicroseconds(len);
-  }
-
-
+  timerAlarmWrite(azTimer, intervalAZ, true);
 }
 
-// Function to control the stepper motor based on the step size
-void controlStepperALT(int stepSize) {
-  // Determine the appropriate step mode based on step size
-  fullStep();
-  if (abs(stepSize) < 8) {
-    tick1 = 0;
-    len1 = 0;
-  } else if (abs(stepSize) < 32) {
-    tick1 = 1;
-    len1 = 1350;
-  } else if (abs(stepSize) < 64) {
-    tick1 = 2;
-    len1 = 1400;
-  } else if (abs(stepSize) < 128) {
-    tick1 = 4;
-    len1 = 1600;
-  }
-  // else if (abs(stepSize) < 1024) {
-  //   tick = 16;
-  //   len = 2200;
-  // }
-  else {
-    tick1 = 8;
-    len1 = 1400;
-  }
+void controlStepperALT(int pidOutputALT) {
+  
+  digitalWrite(dirPinALT, (pidOutputALT >= 0) ? HIGH : LOW);
 
-  // Set the direction based on the sign of stepSize
-  digitalWrite(dirPinALT, (stepSize >= 0) ? HIGH : LOW);
+  if(pidOutputALT < 4){
+    // setupAltTimer(5000000);
+   }
+  float k = 0.5;    
+  //float altFreq = 600 * (1 - exp(-k * abs(pidOutputALT)));     
+  float altFreq = (abs(pidOutputALT) / 100.0) * 500; // Linearly maps 0-100 to 0-400Hz
 
-  // store the last used direction
-  lastDirection = stepSize >= 0 ? HIGH : LOW;
-
-  // Perform the steps
-  for (int i = 0; i < abs(tick1); ++i) {
-    digitalWrite(stepPinALT, HIGH);
-    delayMicroseconds(len1);
-    digitalWrite(stepPinALT, LOW);
-    delayMicroseconds(len1);
-  }
-
-
+  float intervalALT = (altFreq > 0) ? 1000000 / altFreq : MAX_INTERVAL;
+  Serial.print("Alt Freq: ");
+  Serial.println(altFreq);
+  timerAlarmWrite(altTimer, intervalALT, true);
 }
+
 
 void findMarkerX() {
   // Adjust scanning parameters based on scan counter
