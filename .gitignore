@@ -3,3 +3,5 @@ venv
 .vscode
 Capstone
 StepperSpeed
+*ipynb_checkpoints
+**/*.ipynb_checkpoints/
