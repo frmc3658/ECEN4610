@@ -24,33 +24,60 @@ else:
         ret, frame = vid_capture.read()
 
         if ret:
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            
+            lower_red1 = np.array([00, 200, 200])
+            upper_red1 = np.array([50, 255, 255])
+            lower_red2 = np.array([120, 156,156])
+            upper_red2 = np.array([180, 255, 255])
+            
+            #lower_green = np.array([36, 25, 25])
+            #upper_green = np.array([86, 255, 255])
+            
             # Convert the frame to grayscale for circle detection
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            gray = cv2.GaussianBlur(gray, (9, 9), 2)
+            mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+            mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+            
+            red_mask = cv2.bitwise_or(mask1, mask2)
+            
+            #green_mask = cv2.inRange(hsv, lower_green, upper_green)
+            contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if contours:
+                largest = max(contours, key=cv2.contourArea)
+                
+                cv2.drawContours(frame, [largest], -1, (0, 255, 0), 2)
+#             # Perform Hough Circle Transform
+#             params = cv2.SimpleBlobDetector_Params()
+#             
+#             params.filterByArea = True
+#             params.minArea = 100000
+#             
+#             detector = cv2.SimpleBlobDetector_create(params)
+#             
+#             red_keypoints = detector.detect(red_mask)
+            #green_keypoints = detector.detect(green_mask)
+            
+#             red_blob_image = cv2.drawKeypoints(frame, red_keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+#             #green_blob_image = cv2.drawKeypoints(frame, red_keypoints, np.array([]), (0,255,0), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+#             if red_blob_image is not None:
+#                 red_blob_image = np.uint16(np.around(red_blob_image))
+# 
+#                 for red_blob_image in red_blob_image[0, :]:
+#                     # Draw the outer circle
+#                     cv2.circle(frame, (red_blob_image[0],red_blob_image[1]) ,red_blob_image[2], (0, 0, 255), 2)
+#                     # Draw the center of the circle
+# #                     cv2.circle(frame, (red_blob_image[0], red_blob_image[1]), 2, (0, 255, 0), 3)
 
-            # Perform Hough Circle Transform
-            circles = cv2.HoughCircles(
-                gray, 
-                cv2.HOUGH_GRADIENT, dp=1, minDist=20, param1=50, param2=30, minRadius=0, maxRadius=0
-            )
-
-            # Draw circles if blob found
-            if circles is not None:
-                circles = np.uint16(np.around(circles))
-
-                for circle in circles[0, :]:
-                    # Draw the outer circle
-                    cv2.circle(frame, (circle[0], circle[1]), circle[2], (0, 0, 255), 2)
-                    # Draw the center of the circle
-                    cv2.circle(frame, (circle[0], circle[1]), 2, (0, 255, 0), 3)
 
             # Draw crosshair
             cv2.line(frame, (int(screenWidth/2), int(screenHeight/2 - 10)), (int(screenWidth/2), int(screenHeight/2 + 10)), (0, 255, 0), 2) 
             cv2.line(frame, (int(screenWidth/2 - 10), int(screenHeight/2)), (int(screenWidth/2 + 10), int(screenHeight/2)), (0, 255, 0), 2) 
-
-            cv2.imshow('Frame', frame)
+#             cv2.imshow("red", red_blob_image)
+#             cv2.imshow("green", green_blob_image)
             
-            k = cv2.waitKey(20)
+            cv2.imshow("Frame", frame)
+            k = cv2.waitKey(30)
             if k == 113:  # 'q' key to exit
                 break
         else:
