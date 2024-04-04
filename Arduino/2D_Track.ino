@@ -9,26 +9,33 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 
 // Pin Definitions
-#define stepPinAZ 15
-#define dirPinAZ 3
-#define stepPinALT 36
-#define dirPinALT 37
-//#define potPin A5
-#define MS1pin 7
-#define MS2pin 5
-#define MS3pin 6
+#define lasPin 1
+
+#define stepPinAZ 5
+#define dirPinAZ 4
+
+#define stepPinALT 39
+#define dirPinALT 38
+
+#define MS1pinAZ 15
+#define MS2pinAZ 7
+#define MS3pinAZ 6
+
+#define MS1pinALT 42
+#define MS2pinALT 41
+#define MS3pinALT 40
 
 static int MAX_INTERVAL = 250000;
 
 // PID variables: ALT (adjust these to fine-tune)
-double Kp_alt = 0.5;  // Proportional gain
-double Ki_alt = 0.0005;  // Integral gain 
-double Kd_alt = 0.1;  // Derivative gain
+double Kp_alt = 0.65;  // Proportional gain
+double Ki_alt = 0.005;  // Integral gain 
+double Kd_alt = 0.85;  // Derivative gain
 
 // PID variables: AZ (adjust these to fine-tune)
-double Kp_az = 0.55;  // Proportional gain
-double Ki_az = 0.005;  // Integral gain
-double Kd_az = 0.25;  // Derivative gain
+double Kp_az = 0.56;/*0.55;  // Proportional gain*/
+double Ki_az = 0.005;/*0.005;  // Integral gain*/
+double Kd_az = 0.95;/*0.25;  // Derivative gain*/
 
 int k = 15;
 
@@ -68,14 +75,19 @@ void setup() {
   Serial.begin(115200);
   Serial1.begin(115200, SERIAL_8N1, 18, 17);
   // Set pins as Outputs
+  pinMode(lasPin, OUTPUT);
   pinMode(stepPinAZ, OUTPUT);
   pinMode(dirPinAZ, OUTPUT);
   pinMode(stepPinALT, OUTPUT);
   pinMode(dirPinALT, OUTPUT);
+  
+  pinMode(MS1pinAZ, OUTPUT);
+  pinMode(MS2pinAZ, OUTPUT);
+  pinMode(MS3pinAZ, OUTPUT);
 
-  pinMode(MS1pin, OUTPUT);
-  pinMode(MS2pin, OUTPUT);
-  pinMode(MS3pin, OUTPUT);
+  pinMode(MS1pinALT, OUTPUT);
+  pinMode(MS2pinALT, OUTPUT);
+  pinMode(MS3pinALT, OUTPUT);
 
   
   // setupAzTimer(1000000);
@@ -101,6 +113,7 @@ void loop() {
 
     if(data == "SCAN"){
       //Serial.println("Scanning");
+      digitalWrite(lasPin, LOW);
       findMarkerX();
       if(abs(pidOutputALT) > 80){
         findMarkerY();
@@ -114,14 +127,21 @@ void loop() {
       int dist_x = data.substring(0, data.indexOf(',')).toInt();
       int dist_y = data.substring(data.indexOf(',') + 1).toInt();
   
-      //Serial.print("Received: X: ");
-      Serial.println(dist_x);
-      //Serial.print(", Y: ");
-      //Serial.println(dist_y);
+//      Serial.print("Received: X: ");
+//      Serial.println(dist_x);
+//      Serial.print(", Y: ");
+//      Serial.println(dist_y);
   
       // Calculate PID output
       pidOutputAZ = calculatePIDX(dist_x);
+      Serial.print(pidOutputAZ);
+      Serial.print("\t");
       pidOutputALT = calculatePIDY(dist_y);
+
+      if(abs(pidOutputAZ) > 10 || abs(pidOutputALT) > 10){
+        digitalWrite(lasPin, LOW);
+      }
+      else digitalWrite(lasPin, HIGH);
   
       // Control stepper motor based on PID output
       controlStepperAZ(pidOutputAZ);
@@ -195,7 +215,7 @@ int calculatePIDY(int currentError) {
 
 // Function to control the stepper motor based on the frequency
 void controlStepperAZ(int pidOutputAZ) {
-  sixteenStep();
+  sixteenStepAZ();
   
   digitalWrite(dirPinAZ, (pidOutputAZ >= 0) ? HIGH : LOW);
   lastDirectionX = (pidOutputAZ >= 0) ? HIGH : LOW; 
@@ -205,15 +225,17 @@ void controlStepperAZ(int pidOutputAZ) {
   }
   float k = 0.5;
   //float azFreq = 600 * (1 - exp(-k * abs(pidOutputAZ))); // Calculate azimuth frequency
-  float azFreq = ((abs(pidOutputAZ) / 100.0) * 500)*4;  
+  float azFreq = ((abs(pidOutputAZ) / 100.0) * 2500);  
   float intervalAZ = (azFreq > 0) ? 1000000 / azFreq : MAX_INTERVAL;
-  Serial.print("Az Frequency: ");
-  Serial.println(azFreq);
+  //Serial.print("Az Frequency: ");
+  Serial.print(azFreq);
+  Serial.print("\t");
 
   timerAlarmWrite(azTimer, intervalAZ, true);
 }
 
 void controlStepperALT(int pidOutputALT) {
+  sixteenStepALT();
   
   digitalWrite(dirPinALT, (pidOutputALT >= 0) ? HIGH : LOW);
   lastDirectionY = (pidOutputALT >= 0) ? HIGH : LOW;
@@ -224,10 +246,10 @@ void controlStepperALT(int pidOutputALT) {
    }
   float k = 0.5;    
   //float altFreq = 600 * (1 - exp(-k * abs(pidOutputALT)));     
-  float altFreq = (abs(pidOutputALT) / 100.0) * 500 * 4; // Linearly maps 0-100 to 0-400Hz
+  float altFreq = (abs(pidOutputALT) / 100.0) * 2500; // Linearly maps 0-100 to 0-400Hz
 
   float intervalALT = (altFreq > 0) ? 1000000 / altFreq : MAX_INTERVAL;
-  Serial.print("Alt Freq: ");
+  //Serial.print("Alt Freq: ");
   Serial.println(altFreq);
   timerAlarmWrite(altTimer, intervalALT, true);
 }
@@ -235,7 +257,7 @@ void controlStepperALT(int pidOutputALT) {
 
 void findMarkerX() {
     digitalWrite(dirPinAZ, lastDirectionX);
-    int scanFreq = 800;
+    int scanFreq = 1500;
     float intervalAZ = (scanFreq > 0) ? 1000000 / scanFreq : MAX_INTERVAL;
     timerAlarmWrite(azTimer, intervalAZ, true);
     lastDirectionX = !lastDirectionX;
@@ -243,7 +265,7 @@ void findMarkerX() {
 
 void findMarkerY() {
     digitalWrite(dirPinALT, lastDirectionY);
-    int scanFreq = 600; 
+    int scanFreq = 800; 
     float intervalALT = (scanFreq > 0) ? 1000000 / scanFreq : MAX_INTERVAL;
     timerAlarmWrite(altTimer, intervalALT, true);
     lastDirectionY = !lastDirectionY;
@@ -251,32 +273,62 @@ void findMarkerY() {
 
 
 // Custom Functions for Step Sizes
-void fullStep() {
-  digitalWrite(MS1pin, LOW);
-  digitalWrite(MS2pin, LOW);
-  digitalWrite(MS3pin, LOW);
+void fullStepAZ() {
+  digitalWrite(MS1pinAZ, LOW);
+  digitalWrite(MS2pinAZ, LOW);
+  digitalWrite(MS3pinAZ, LOW);
 }
 
-void halfStep() {
-  digitalWrite(MS1pin, HIGH);
-  digitalWrite(MS2pin, LOW);
-  digitalWrite(MS3pin, LOW);
+void halfStepAZ() {
+  digitalWrite(MS1pinAZ, HIGH);
+  digitalWrite(MS2pinAZ, LOW);
+  digitalWrite(MS3pinAZ, LOW);
 }
 
-void quarterStep() {
-  digitalWrite(MS1pin, LOW);
-  digitalWrite(MS2pin, HIGH);
-  digitalWrite(MS3pin, LOW);
+void quarterStepAZ() {
+  digitalWrite(MS1pinAZ, LOW);
+  digitalWrite(MS2pinAZ, HIGH);
+  digitalWrite(MS3pinAZ, LOW);
 }
 
-void eightStep() {
-  digitalWrite(MS1pin, HIGH);
-  digitalWrite(MS2pin, HIGH);
-  digitalWrite(MS3pin, LOW);
+void eightStepAZ() {
+  digitalWrite(MS1pinAZ, HIGH);
+  digitalWrite(MS2pinAZ, HIGH);
+  digitalWrite(MS3pinAZ, LOW);
 }
 
-void sixteenStep() {
-  digitalWrite(MS1pin, HIGH);
-  digitalWrite(MS2pin, HIGH);
-  digitalWrite(MS3pin, HIGH);
+void sixteenStepAZ() {
+  digitalWrite(MS1pinAZ, HIGH);
+  digitalWrite(MS2pinAZ, HIGH);
+  digitalWrite(MS3pinAZ, HIGH);
+}
+
+void fullStepALT() {
+  digitalWrite(MS1pinALT, LOW);
+  digitalWrite(MS2pinALT, LOW);
+  digitalWrite(MS3pinALT, LOW);
+}
+
+void halfStepALT() {
+  digitalWrite(MS1pinALT, HIGH);
+  digitalWrite(MS2pinALT, LOW);
+  digitalWrite(MS3pinALT, LOW);
+}
+
+void quarterStepALT() {
+  digitalWrite(MS1pinALT, LOW);
+  digitalWrite(MS2pinALT, HIGH);
+  digitalWrite(MS3pinALT, LOW);
+}
+
+void eightStepALT() {
+  digitalWrite(MS1pinALT, HIGH);
+  digitalWrite(MS2pinALT, HIGH);
+  digitalWrite(MS3pinALT, LOW);
+}
+
+void sixteenStepALT() {
+  digitalWrite(MS1pinALT, HIGH);
+  digitalWrite(MS2pinALT, HIGH);
+  digitalWrite(MS3pinALT, HIGH);
 }
