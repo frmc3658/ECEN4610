@@ -28,14 +28,14 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 static int MAX_INTERVAL = 250000;
 
 // PID variables: ALT (adjust these to fine-tune)
-double Kp_alt = 0.65;  // Proportional gain
-double Ki_alt = 0.005;  // Integral gain 
-double Kd_alt = 0.85;  // Derivative gain
+double Kp_alt = 0.30;  // Proportional gain
+double Ki_alt = 0.03;  // Integral gain 
+double Kd_alt = 0.95;  // Derivative gain
 
 // PID variables: AZ (adjust these to fine-tune)
-double Kp_az = 0.56;/*0.55;  // Proportional gain*/
-double Ki_az = 0.005;/*0.005;  // Integral gain*/
-double Kd_az = 0.95;/*0.25;  // Derivative gain*/
+double Kp_az = 0.32;/*0.55;  // Proportional gain*/
+double Ki_az = 0.032;/*0.005;  // Integral gain*/
+double Kd_az = 1.0;/*0.25;  // Derivative gain*/
 
 int k = 15;
 
@@ -155,26 +155,26 @@ void loop() {
 int calculatePIDX(int currentError) {
   double errorX = setPoint - currentError;
   integralX += errorX;
-  squaredIntegralX += errorX * errorX + 100;
+  squaredIntegralX += errorX * errorX;
 
   // Anti-windup (optional): Limit the integral term
-  if (integralX > 100) {
-    integralX = 100;
-  } else if (integralX < -100) {
-    integralX = -100;
+  if (integralX > 500) {
+    integralX = 500;
+  } else if (integralX < -500) {
+    integralX = -500;
   }
 
   if (squaredIntegralX > 1000) { 
-    squaredIntegralX = 0;
+    squaredIntegralX = 1000;
   } else if (squaredIntegralX < -1000) {
-    squaredIntegralX = 0;
+    squaredIntegralX = -1000;
   }
 
   double derivativeX = errorX - previousErrorX;
 
   // PID formula
   //double outputX = Kp_az * errorX + Ki_az * integralX + Kd_az * derivativeX;
-  double outputX = Kp_az * errorX + Ki_az * integralX + Kd_az * derivativeX + Ki_az * squaredIntegralX;
+  double outputX = Kp_az * errorX + Ki_az * integralX + Kd_az * derivativeX/* + Ki_az * squaredIntegralX*/;
 
   // Save current error for the next iteration
   previousErrorX = errorX;
@@ -190,10 +190,10 @@ int calculatePIDY(int currentError) {
   squaredIntegralX += errorY * errorY + 80;
 
   // Anti-windup (optional): Limit the integral term
-  if (integralY > 100) {
-    integralY = 100;
-  } else if (integralY < -100) {
-    integralY = -100;
+  if (integralY > 500) {
+    integralY = 500;
+  } else if (integralY < -500) {
+    integralY = -500;
   }
   if (squaredIntegralY > 1000) { 
     squaredIntegralY = 0;
@@ -204,7 +204,7 @@ int calculatePIDY(int currentError) {
   double derivativeY = errorY - previousErrorY;
 
   // PID formula
-  double outputY = Kp_alt * errorY + Ki_alt * integralY + Kd_alt * derivativeY + Ki_alt * squaredIntegralY;
+  double outputY = Kp_alt * errorY + Ki_alt * integralY + Kd_alt * derivativeY /*+ Ki_alt * squaredIntegralY*/;
 
   // Save current error for the next iteration
   previousErrorY = errorY;
@@ -225,7 +225,7 @@ void controlStepperAZ(int pidOutputAZ) {
   }
   float k = 0.5;
   //float azFreq = 600 * (1 - exp(-k * abs(pidOutputAZ))); // Calculate azimuth frequency
-  float azFreq = ((abs(pidOutputAZ) / 100.0) * 2500);  
+  float azFreq = ((abs(pidOutputAZ) / 100.0) * 4000);  
   float intervalAZ = (azFreq > 0) ? 1000000 / azFreq : MAX_INTERVAL;
   //Serial.print("Az Frequency: ");
   Serial.print(azFreq);
@@ -246,7 +246,7 @@ void controlStepperALT(int pidOutputALT) {
    }
   float k = 0.5;    
   //float altFreq = 600 * (1 - exp(-k * abs(pidOutputALT)));     
-  float altFreq = (abs(pidOutputALT) / 100.0) * 2500; // Linearly maps 0-100 to 0-400Hz
+  float altFreq = (abs(pidOutputALT) / 100.0) * 4000; // Linearly maps 0-100 to 0-400Hz
 
   float intervalALT = (altFreq > 0) ? 1000000 / altFreq : MAX_INTERVAL;
   //Serial.print("Alt Freq: ");
