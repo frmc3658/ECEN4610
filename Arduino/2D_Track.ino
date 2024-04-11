@@ -29,19 +29,28 @@ static int MAX_INTERVAL = 250000;
 
 // PID variables: ALT (adjust these to fine-tune)
 double Kp_alt = 0.30;  // Proportional gain
-double Ki_alt = 0.03;  // Integral gain 
+double Ki_alt = 0.0;  // Integral gain 0.03
 double Kd_alt = 0.95;  // Derivative gain
 
 // PID variables: AZ (adjust these to fine-tune)
-double Kp_az = 0.32;/*0.55;  // Proportional gain*/
-double Ki_az = 0.032;/*0.005;  // Integral gain*/
-double Kd_az = 1.0;/*0.25;  // Derivative gain*/
+double Kp_az = 0.35;/*0.32;  // Proportional gain*/
+double Ki_az = 0.035;/*0.032;  // Integral gain*/
+double Kd_az = 0.065;/*0.25;  // Derivative gain*/
+
+double a1 = 17.06; /*derivative calc constant*/
+double a0 = -17.06; /*derivative calc constant*/
+double b1 = -0.08643; /*derivative calc constant*/
+double b0 = 0.001867; /*derivative calc constant*/
+
 
 int k = 15;
 
+double derivativeX = 0;
 double previousErrorX = 0;
+double previousDerivativeX = 0;
 double integralX = 0;
 double previousErrorY = 0;
+double previousDerivativeY = 0;
 double integralY = 0;
 
 double squaredIntegralX = 0; 
@@ -170,14 +179,15 @@ int calculatePIDX(int currentError) {
     squaredIntegralX = -1000;
   }
 
-  double derivativeX = errorX - previousErrorX;
+  derivativeX = a1 * errorX + a0 * previousErrorX - b1 * derivativeX - b0 * previousDerivativeX; /*y(k) = a1*u1+a0*u2-b1*y1-b0*y2;*/
 
   // PID formula
   //double outputX = Kp_az * errorX + Ki_az * integralX + Kd_az * derivativeX;
   double outputX = Kp_az * errorX + Ki_az * integralX + Kd_az * derivativeX/* + Ki_az * squaredIntegralX*/;
 
-  // Save current error for the next iteration
+  // Save current error and derivative for the next iteration
   previousErrorX = errorX;
+  previousDerivativeX = derivativeX; 
 
   // Convert the output to a step size
   return static_cast<int>(outputX);
@@ -225,7 +235,7 @@ void controlStepperAZ(int pidOutputAZ) {
   }
   float k = 0.5;
   //float azFreq = 600 * (1 - exp(-k * abs(pidOutputAZ))); // Calculate azimuth frequency
-  float azFreq = ((abs(pidOutputAZ) / 100.0) * 4000);  
+  float azFreq = ((abs(pidOutputAZ) / 100.0) * 3000);  
   float intervalAZ = (azFreq > 0) ? 1000000 / azFreq : MAX_INTERVAL;
   //Serial.print("Az Frequency: ");
   Serial.print(azFreq);
