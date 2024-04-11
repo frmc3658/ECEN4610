@@ -17,6 +17,14 @@ screenHeight = int(vid_capture.get(4))
 
 ser = serial.Serial('/dev/ttyS0', 115200)
 
+min_marker_size = 27
+max_marker_size = 355
+min_offset = 5
+max_offset = 155
+
+marker_size_range = max_marker_size - min_marker_size
+offset_range = max_offset - min_offset
+
 if not vid_capture.isOpened():
     print("Error opening webcam!")
 else:
@@ -26,40 +34,35 @@ else:
     aruco_params = aruco.DetectorParameters_create()
     
     start_time = time.time()
-    #frames = 0
+    start_time_scan = time.time()
+    frames = 0
 
     while vid_capture.isOpened():
         ret, frame = vid_capture.read()
         #frame = imutils.resize(frame, width=320) #resize window to 1/4 of original
         #fps = vid_capture.get(cv2.CAP_PROP_FPS)
         if ret:
-            #frames += 1
-            #elapsed_time = time.time() - start_time;
-            #if elapsed_time >= 1:
-                #fps = frames * 2.4 / elapsed_time
-                #frames = 0
-                #start_time = time.time()
+            frames += 1
+            elapsed_time = time.time() - start_time;
+            if elapsed_time >= 1:
+                fps = frames * 2.4 / elapsed_time
+                frames = 0
+                start_time = time.time()
                                 
-                
-            # Calculate the center of the crosshair
-            crosshair_x, crosshair_y = int(screenWidth / 2), int(screenHeight / 2)
-
+        
             # Detect ArUco markers in the frame
             corners, ids, _ = aruco.detectMarkers(frame, aruco_dict, parameters=aruco_params)
             
-            cv2.line(frame, (crosshair_x, crosshair_y - 10), (crosshair_x, crosshair_y + 10), (0, 255, 0), 2)  # crosshair
-            cv2.line(frame, (crosshair_x - 10, crosshair_y), (crosshair_x + 10, crosshair_y), (0, 255, 0), 2)  # crosshair
+            cv2.putText(frame, f"FPS: {int(fps)}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
             
-            #cv2.putText(frame, f"FPS: {int(fps)}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-            
-            elapsed_time = time.time() - start_time;
+            elapsed_time_scan = time.time() - start_time_scan;
 
             if ids is None:
-                if elapsed_time >= 2:
+                if elapsed_time_scan >= 2.5:
                     data_to_send = "SCAN\n"
                     ser.write(bytes(data_to_send, 'utf-8'))
                     print("Marker not detected!")
-                    start_time = time.time()
+                    start_time_scan = time.time()
             else:
                 # Find the marker with ID 69
                 for i in range(len(ids)):
@@ -67,6 +70,21 @@ else:
                         print("Marker detected!")
                         # Draw the detected marker
                         aruco.drawDetectedMarkers(frame, corners)
+                        
+                        marker_size = cv2.norm(corners[i][0][0] - corners[i][0][1])
+                        
+                        print(marker_size)
+                        
+                        y_offset = int((marker_size - min_marker_size) / marker_size_range * offset_range) + min_offset
+                        
+                        # Calculate the center of the crosshair
+                        crosshair_x = int(screenWidth / 2)
+
+                        crosshair_y = int((2*screenHeight/ 5) + y_offset) 
+                    
+                        
+                        cv2.line(frame, (crosshair_x, crosshair_y - 10), (crosshair_x, crosshair_y + 10), (0, 255, 0), 2)  # crosshair
+                        cv2.line(frame, (crosshair_x - 10, crosshair_y), (crosshair_x + 10, crosshair_y), (0, 255, 0), 2)  # crosshair
                                  
                         # Calculate the center of the detected marker
                         marker_center_x = int((corners[i][0][0][0] + corners[i][0][2][0]) / 2)
