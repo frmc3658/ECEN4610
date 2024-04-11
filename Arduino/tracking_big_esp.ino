@@ -9,26 +9,31 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 
 // Pin Definitions
-#define stepPinAZ 15
-#define dirPinAZ 3
-#define stepPinALT 36
-#define dirPinALT 37
-//#define potPin A5
-#define MS1pin 7
-#define MS2pin 5
-#define MS3pin 6
+#define stepPinAZ 5
+#define dirPinAZ 4
+
+#define stepPinALT 39
+#define dirPinALT 38
+
+#define MS1pinAZ 15
+#define MS2pinAZ 7
+#define MS3pinAZ 6
+
+#define MS1pinALT 42
+#define MS2pinALT 41
+#define MS3pinALT 40
 
 static int MAX_INTERVAL = 250000;
 
 // PID variables: ALT (adjust these to fine-tune)
 double Kp_alt = 0.5;  // Proportional gain
-double Ki_alt = 0.0005;  // Integral gain
-double Kd_alt = 0.005;  // Derivative gain
+double Ki_alt = 0.0005;  // Integral gain 
+double Kd_alt = 0.1;  // Derivative gain
 
 // PID variables: AZ (adjust these to fine-tune)
 double Kp_az = 0.55;  // Proportional gain
 double Ki_az = 0.005;  // Integral gain
-double Kd_az = 0.05;  // Derivative gain
+double Kd_az = 0.25;  // Derivative gain
 
 int k = 15;
 
@@ -37,10 +42,16 @@ double integralX = 0;
 double previousErrorY = 0;
 double integralY = 0;
 
+double squaredIntegralX = 0; 
+double squaredIntegralY = 0; 
+
 int setPoint = 0;
 
-bool lastDirection = 0;
-int scanCounter = 0;
+bool lastDirectionX = 0;
+bool lastDirectionY = 0;
+
+int pidOutputAZ = 0;
+int pidOutputALT = 0;
 
 void IRAM_ATTR AzTimer() {
   portENTER_CRITICAL_ISR(&timerMux);
@@ -66,10 +77,14 @@ void setup() {
   pinMode(dirPinAZ, OUTPUT);
   pinMode(stepPinALT, OUTPUT);
   pinMode(dirPinALT, OUTPUT);
+  
+  pinMode(MS1pinAZ, OUTPUT);
+  pinMode(MS2pinAZ, OUTPUT);
+  pinMode(MS3pinAZ, OUTPUT);
 
-  pinMode(MS1pin, OUTPUT);
-  pinMode(MS2pin, OUTPUT);
-  pinMode(MS3pin, OUTPUT);
+  pinMode(MS1pinALT, OUTPUT);
+  pinMode(MS2pinALT, OUTPUT);
+  pinMode(MS3pinALT, OUTPUT);
 
   
   // setupAzTimer(1000000);
@@ -92,31 +107,44 @@ void setup() {
 void loop() {
   if (Serial1.available() > 0) {
     String data = Serial1.readStringUntil('\n');
-    int dist_x = data.substring(0, data.indexOf(',')).toInt();
-    int dist_y = data.substring(data.indexOf(',') + 1).toInt();
 
-    Serial.print("Received: X: ");
-    Serial.print(dist_x);
-    Serial.print(", Y: ");
-    Serial.println(dist_y);
-
-    // Calculate PID output
-    int pidOutputAZ = calculatePIDX(dist_x);
-    int pidOutputALT = calculatePIDY(dist_y);
-
-    // Control stepper motor based on PID output
-    controlStepperAZ(pidOutputAZ);
-    controlStepperALT(pidOutputALT);
+    if(data == "SCAN"){
+      //Serial.println("Scanning");
+      findMarkerX();
+      if(abs(pidOutputALT) > 80){
+        findMarkerY();
+      }
+      else{
+        timerAlarmWrite(altTimer, MAX_INTERVAL, true); // talk with Aidan on this
+      }
+      
+    }
+    else{
+      int dist_x = data.substring(0, data.indexOf(',')).toInt();
+      int dist_y = data.substring(data.indexOf(',') + 1).toInt();
+  
+      //Serial.print("Received: X: ");
+      Serial.println(dist_x);
+      //Serial.print(", Y: ");
+      //Serial.println(dist_y);
+  
+      // Calculate PID output
+      pidOutputAZ = calculatePIDX(dist_x);
+      pidOutputALT = calculatePIDY(dist_y);
+  
+      // Control stepper motor based on PID output
+      controlStepperAZ(pidOutputAZ);
+      controlStepperALT(pidOutputALT);
+      
+    } 
   }
-  //  else{
-  //    findMarkerX();
-  //  }
 }
 
 // Function to calculate PID output
 int calculatePIDX(int currentError) {
   double errorX = setPoint - currentError;
   integralX += errorX;
+  squaredIntegralX += errorX * errorX + 100;
 
   // Anti-windup (optional): Limit the integral term
   if (integralX > 100) {
@@ -125,10 +153,17 @@ int calculatePIDX(int currentError) {
     integralX = -100;
   }
 
+  if (squaredIntegralX > 1000) { 
+    squaredIntegralX = 0;
+  } else if (squaredIntegralX < -1000) {
+    squaredIntegralX = 0;
+  }
+
   double derivativeX = errorX - previousErrorX;
 
   // PID formula
-  double outputX = Kp_az * errorX + Ki_az * integralX + Kd_az * derivativeX;
+  //double outputX = Kp_az * errorX + Ki_az * integralX + Kd_az * derivativeX;
+  double outputX = Kp_az * errorX + Ki_az * integralX + Kd_az * derivativeX + Ki_az * squaredIntegralX;
 
   // Save current error for the next iteration
   previousErrorX = errorX;
@@ -141,6 +176,7 @@ int calculatePIDX(int currentError) {
 int calculatePIDY(int currentError) {
   double errorY = setPoint - currentError;
   integralY += errorY;
+  squaredIntegralX += errorY * errorY + 80;
 
   // Anti-windup (optional): Limit the integral term
   if (integralY > 100) {
@@ -148,11 +184,16 @@ int calculatePIDY(int currentError) {
   } else if (integralY < -100) {
     integralY = -100;
   }
+  if (squaredIntegralY > 1000) { 
+    squaredIntegralY = 0;
+  } else if (squaredIntegralY < -1000) {
+    squaredIntegralY = 0;
+  }
 
   double derivativeY = errorY - previousErrorY;
 
   // PID formula
-  double outputY = Kp_alt * errorY + Ki_alt * integralY + Kd_alt * derivativeY;
+  double outputY = Kp_alt * errorY + Ki_alt * integralY + Kd_alt * derivativeY + Ki_alt * squaredIntegralY;
 
   // Save current error for the next iteration
   previousErrorY = errorY;
@@ -163,9 +204,10 @@ int calculatePIDY(int currentError) {
 
 // Function to control the stepper motor based on the frequency
 void controlStepperAZ(int pidOutputAZ) {
-  sixteenStep();
+  sixteenStepAZ();
   
   digitalWrite(dirPinAZ, (pidOutputAZ >= 0) ? HIGH : LOW);
+  lastDirectionX = (pidOutputAZ >= 0) ? HIGH : LOW; 
   
   if(pidOutputAZ < 4){
     digitalWrite(stepPinAZ, LOW);
@@ -181,8 +223,10 @@ void controlStepperAZ(int pidOutputAZ) {
 }
 
 void controlStepperALT(int pidOutputALT) {
+  sixteenStepALT();
   
   digitalWrite(dirPinALT, (pidOutputALT >= 0) ? HIGH : LOW);
+  lastDirectionY = (pidOutputALT >= 0) ? HIGH : LOW;
 
   if(pidOutputALT < 4){
     // setupAltTimer(5000000);
@@ -200,61 +244,79 @@ void controlStepperALT(int pidOutputALT) {
 
 
 void findMarkerX() {
-  // Adjust scanning parameters based on scan counter
-  int tick = 16; // Default step size
-  int len = 1200; // Default step duration
+    digitalWrite(dirPinAZ, lastDirectionX);
+    int scanFreq = 800;
+    float intervalAZ = (scanFreq > 0) ? 1000000 / scanFreq : MAX_INTERVAL;
+    timerAlarmWrite(azTimer, intervalAZ, true);
+    lastDirectionX = !lastDirectionX;
+}
 
-  if (scanCounter > 50 && scanCounter < 100) {
-    // Reverse direction for smoother scanning
-    digitalWrite(dirPinAZ, !lastDirection);
-  } else if (scanCounter >= 100) {
-    // Marker not found within reasonable scans, handle error or fallback
-    // stop scanning and return to main loop
-    scanCounter = 0; // Reset scan counter
-    return;
-  }
-
-  // Pulse StepPin
-  for (int i = 0; i < abs(tick); ++i) {
-    digitalWrite(stepPinAZ, HIGH);
-    delayMicroseconds(len);
-    digitalWrite(stepPinAZ, LOW);
-    delayMicroseconds(len);
-  }
-
-  // Update scanning parameters and counters
-  lastDirection = !lastDirection; // Toggle direction for next scan
-  scanCounter++;
+void findMarkerY() {
+    digitalWrite(dirPinALT, lastDirectionY);
+    int scanFreq = 600; 
+    float intervalALT = (scanFreq > 0) ? 1000000 / scanFreq : MAX_INTERVAL;
+    timerAlarmWrite(altTimer, intervalALT, true);
+    lastDirectionY = !lastDirectionY;
 }
 
 
 // Custom Functions for Step Sizes
-void fullStep() {
-  digitalWrite(MS1pin, LOW);
-  digitalWrite(MS2pin, LOW);
-  digitalWrite(MS3pin, LOW);
+void fullStepAZ() {
+  digitalWrite(MS1pinAZ, LOW);
+  digitalWrite(MS2pinAZ, LOW);
+  digitalWrite(MS3pinAZ, LOW);
 }
 
-void halfStep() {
-  digitalWrite(MS1pin, HIGH);
-  digitalWrite(MS2pin, LOW);
-  digitalWrite(MS3pin, LOW);
+void halfStepAZ() {
+  digitalWrite(MS1pinAZ, HIGH);
+  digitalWrite(MS2pinAZ, LOW);
+  digitalWrite(MS3pinAZ, LOW);
 }
 
-void quarterStep() {
-  digitalWrite(MS1pin, LOW);
-  digitalWrite(MS2pin, HIGH);
-  digitalWrite(MS3pin, LOW);
+void quarterStepAZ() {
+  digitalWrite(MS1pinAZ, LOW);
+  digitalWrite(MS2pinAZ, HIGH);
+  digitalWrite(MS3pinAZ, LOW);
 }
 
-void eightStep() {
-  digitalWrite(MS1pin, HIGH);
-  digitalWrite(MS2pin, HIGH);
-  digitalWrite(MS3pin, LOW);
+void eightStepAZ() {
+  digitalWrite(MS1pinAZ, HIGH);
+  digitalWrite(MS2pinAZ, HIGH);
+  digitalWrite(MS3pinAZ, LOW);
 }
 
-void sixteenStep() {
-  digitalWrite(MS1pin, HIGH);
-  digitalWrite(MS2pin, HIGH);
-  digitalWrite(MS3pin, HIGH);
+void sixteenStepAZ() {
+  digitalWrite(MS1pinAZ, HIGH);
+  digitalWrite(MS2pinAZ, HIGH);
+  digitalWrite(MS3pinAZ, HIGH);
+}
+
+void fullStepALT() {
+  digitalWrite(MS1pinALT, LOW);
+  digitalWrite(MS2pinALT, LOW);
+  digitalWrite(MS3pinALT, LOW);
+}
+
+void halfStepALT() {
+  digitalWrite(MS1pinALT, HIGH);
+  digitalWrite(MS2pinALT, LOW);
+  digitalWrite(MS3pinALT, LOW);
+}
+
+void quarterStepALT() {
+  digitalWrite(MS1pinALT, LOW);
+  digitalWrite(MS2pinALT, HIGH);
+  digitalWrite(MS3pinALT, LOW);
+}
+
+void eightStepALT() {
+  digitalWrite(MS1pinALT, HIGH);
+  digitalWrite(MS2pinALT, HIGH);
+  digitalWrite(MS3pinALT, LOW);
+}
+
+void sixteenStepALT() {
+  digitalWrite(MS1pinALT, HIGH);
+  digitalWrite(MS2pinALT, HIGH);
+  digitalWrite(MS3pinALT, HIGH);
 }

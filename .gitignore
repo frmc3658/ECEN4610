@@ -1,3 +1,7 @@
 # Ignore the following directories
 venv
 .vscode
+Capstone
+StepperSpeed
+*ipynb_checkpoints
+**/*.ipynb_checkpoints/
