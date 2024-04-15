@@ -18,9 +18,9 @@ screenHeight = int(vid_capture.get(4))
 ser = serial.Serial('/dev/ttyS0', 115200)
 
 min_marker_size = 27
-max_marker_size = 355
-min_offset = 5
-max_offset = 155
+max_marker_size = 440
+min_offset = 10
+max_offset = 30
 
 marker_size_range = max_marker_size - min_marker_size
 offset_range = max_offset - min_offset
@@ -80,7 +80,7 @@ else:
                         # Calculate the center of the crosshair
                         crosshair_x = int(screenWidth / 2)
 
-                        crosshair_y = int((2*screenHeight/ 5) + y_offset) 
+                        crosshair_y = int((1*screenHeight/ 4) + y_offset) 
                     
                         
                         cv2.line(frame, (crosshair_x, crosshair_y - 10), (crosshair_x, crosshair_y + 10), (0, 255, 0), 2)  # crosshair
