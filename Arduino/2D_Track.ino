@@ -1,5 +1,7 @@
 #include "esp32-hal-timer.h"
 
+#define PRINTING 0
+
 volatile bool azTick = false;
 volatile bool altTick = false;
 
@@ -28,15 +30,15 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 static int MAX_INTERVAL = 250000;
 
 // PID variables: ALT (adjust these to fine-tune)
-double Kp_alt = 0.55;  // Proportional gain 0.55
-double Ki_alt = 0.0475;  // Integral gain 0.0475
-double Kd_alt = 0.055;  // Derivative gain 0.055
+double Kp_alt = 0.69;  // Proportional gain 0.55
+double Ki_alt = 0.065;  // Integral gain 0.0475
+double Kd_alt = 0.07;  // Derivative gain 0.055
 
 // PID variables: AZ (adjust these to fine-tune)
 
 double Kp_az = 0.52;/*0.52;  // Proportional gain*/
 double Ki_az = 0.0475;/*0.0475;  // Integral gain*/
-double Kd_az = 0.052;/*0.052;  // Derivative gain*/
+double Kd_az = 0.052; //0.055;/*0.052;  // Derivative gain*/
 
 double a1 = 25.58; /*derivative calc constant 25.58*/
 double a0 = -25.58; /*derivative calc constant -25.58*/
@@ -146,11 +148,13 @@ void loop() {
 
       // Calculate PID output
       pidOutputAZ = calculatePIDX(dist_x);
-      //Serial.print(pidOutputAZ);
-      //Serial.print("\t");
+#if PRINTING
+      Serial.print(pidOutputAZ);
+      Serial.print("\t");
+#endif
       pidOutputALT = calculatePIDY(dist_y);
 
-      if (abs(pidOutputAZ) > 15 || abs(pidOutputALT) > 12) {
+      if (abs(pidOutputAZ) > 2000 || abs(pidOutputALT) > 1500) {
         digitalWrite(lasPin, LOW);
       }
       else {
@@ -163,6 +167,7 @@ void loop() {
 
     }
 
+#if !PRINTING
     if (Serial.available() > 0) {
       String command = Serial.readStringUntil(' ');
       double value = Serial.parseFloat();
@@ -181,6 +186,7 @@ void loop() {
         Kd_alt = value;
       }
     }
+#endif
   }
 }
 
@@ -257,14 +263,13 @@ void controlStepperAZ(int pidOutputAZ) {
   //  if(abs(pidOutputAZ) > 400){
   //    digitalWrite(stepPinAZ, LOW);
   //  }
-  float k = 0.5;
-  //float azFreq = 600 * (1 - exp(-k * abs(pidOutputAZ))); // Calculate azimuth frequency
-  float azFreq = ((abs(pidOutputAZ) / 100.0) * 3000);
+  float azFreq = ((abs(pidOutputAZ) / 100.0) * 3250);
   float intervalAZ = (azFreq > 0) ? 1000000 / azFreq : MAX_INTERVAL;
   //Serial.print("Az Frequency: ");
-  //Serial.print(azFreq);
-  //Serial.print("\t");
-
+#if PRINTING
+  Serial.print(azFreq);
+  Serial.print("\t");
+#endif
   timerAlarmWrite(azTimer, intervalAZ, true);
 }
 
@@ -277,13 +282,14 @@ void controlStepperALT(int pidOutputALT) {
   //  if(abs(pidOutputALT) > 400){
   //    digitalWrite(stepPinALT, LOW);
   //   }
-  float k = 0.5;
-  //float altFreq = 600 * (1 - exp(-k * abs(pidOutputALT)));
+
   float altFreq = (abs(pidOutputALT) / 100.0) * 3000; // Linearly maps 0-100 to 0-400Hz
 
   float intervalALT = (altFreq > 0) ? 1000000 / altFreq : MAX_INTERVAL;
   //Serial.print("Alt Freq: ");
-  //Serial.println(altFreq);
+#if PRINTING
+  Serial.println(altFreq);
+#endif
   timerAlarmWrite(altTimer, intervalALT, true);
 }
 
