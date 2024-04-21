@@ -28,24 +28,25 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 static int MAX_INTERVAL = 250000;
 
 // PID variables: ALT (adjust these to fine-tune)
-double Kp_alt = 0.4;  // Proportional gain
-double Ki_alt = 0.0475;  // Integral gain 0.03
-double Kd_alt = 0.045;  // Derivative gain
+double Kp_alt = 0.55;  // Proportional gain 0.55
+double Ki_alt = 0.0475;  // Integral gain 0.0475
+double Kd_alt = 0.055;  // Derivative gain 0.055
 
 // PID variables: AZ (adjust these to fine-tune)
 
-double Kp_az = 0.4;/*0.32;  // Proportional gain*/ 
-double Ki_az = 0.0475;/*0.035;  // Integral gain*/
-double Kd_az = 0.045;/*0.075;  // Derivative gain*/
+double Kp_az = 0.52;/*0.52;  // Proportional gain*/
+double Ki_az = 0.0475;/*0.0475;  // Integral gain*/
+double Kd_az = 0.052;/*0.052;  // Derivative gain*/
 
-double a1 = 25.58; /*derivative calc constant 17.06*/
-double a0 = -25.58; /*derivative calc constant -17.06*/
-double b1 = -0.162; /*derivative calc constant -0.08643*/
-double b0 = 0.006561; /*derivative calc constant 0.001867*/
+double a1 = 25.58; /*derivative calc constant 25.58*/
+double a0 = -25.58; /*derivative calc constant -25.58*/
+double b1 = -0.162; /*derivative calc constant -0.162*/
+double b0 = 0.006561; /*derivative calc constant 0.006561*/
 
 
 int k = 15;
 
+double errorX = 0;
 double derivativeX = 0;
 double previousErrorX = 0;
 double previousDerivativeX = 0;
@@ -55,8 +56,8 @@ double previousErrorY = 0;
 double previousDerivativeY = 0;
 double integralY = 0;
 
-double squaredIntegralX = 0; 
-double squaredIntegralY = 0; 
+double squaredIntegralX = 0;
+double squaredIntegralY = 0;
 
 int setPoint = 0;
 
@@ -91,7 +92,7 @@ void setup() {
   pinMode(dirPinAZ, OUTPUT);
   pinMode(stepPinALT, OUTPUT);
   pinMode(dirPinALT, OUTPUT);
-  
+
   pinMode(MS1pinAZ, OUTPUT);
   pinMode(MS2pinAZ, OUTPUT);
   pinMode(MS3pinAZ, OUTPUT);
@@ -100,73 +101,94 @@ void setup() {
   pinMode(MS2pinALT, OUTPUT);
   pinMode(MS3pinALT, OUTPUT);
 
-  
+
   // setupAzTimer(1000000);
-  azTimer = timerBegin(0, 40, true); 
+  azTimer = timerBegin(0, 40, true);
   //Serial.println("HereAZ1");
   timerAttachInterrupt(azTimer, &AzTimer, true);
-  //Serial.println("HereAZ"); 
+  //Serial.println("HereAZ");
   timerAlarmWrite(azTimer, 1000000, true);
   timerAlarmEnable(azTimer);
-  
+
   // setupAltTimer(1000000);
   altTimer = timerBegin(1, 40, true);
   timerAttachInterrupt(altTimer, &AltTimer, true);
   timerAlarmWrite(altTimer, 1000000/*intervalAlt*/, true);
-  //Serial.println("HereALT"); 
+  //Serial.println("HereALT");
   timerAlarmEnable(altTimer);
-  
+
 }
 
 void loop() {
   if (Serial1.available() > 0) {
     String data = Serial1.readStringUntil('\n');
 
-    if(data == "SCAN"){
+    if (data == "SCAN") {
       //Serial.println("Scanning");
       digitalWrite(lasPin, LOW);
       findMarkerX();
-      if(abs(pidOutputALT) > 80){
+      if (abs(pidOutputALT) > 80) {
         findMarkerY();
       }
-      else{
+      else {
         timerAlarmWrite(altTimer, MAX_INTERVAL, true); // talk with Aidan on this
       }
-      
+
     }
-    else{
+    else {
       int dist_x = data.substring(0, data.indexOf(',')).toInt();
       int dist_y = data.substring(data.indexOf(',') + 1).toInt();
-  
-//      Serial.print("Received: X: ");
-//      Serial.println(dist_x);
-//      Serial.print(", Y: ");
-//      Serial.println(dist_y);
-  
+
+      //      Serial.print("Received: X: ");
+      //      Serial.println(dist_x);
+      //      Serial.print(", Y: ");
+      //      Serial.println(dist_y);
+
       // Calculate PID output
       pidOutputAZ = calculatePIDX(dist_x);
-      Serial.print(pidOutputAZ);
-      Serial.print("\t");
+      //Serial.print(pidOutputAZ);
+      //Serial.print("\t");
       pidOutputALT = calculatePIDY(dist_y);
 
-      if(abs(pidOutputAZ) > 10 || abs(pidOutputALT) > 10){
+      if (abs(pidOutputAZ) > 15 || abs(pidOutputALT) > 12) {
         digitalWrite(lasPin, LOW);
       }
-      else digitalWrite(lasPin, HIGH);
-  
+      else {
+        digitalWrite(lasPin, HIGH);
+      }
+
       // Control stepper motor based on PID output
       controlStepperAZ(pidOutputAZ);
       controlStepperALT(pidOutputALT);
-      
-    } 
+
+    }
+
+    if (Serial.available() > 0) {
+      String command = Serial.readStringUntil(' ');
+      double value = Serial.parseFloat();
+  
+      if (command == "Kp_az") {
+        Kp_az = value;
+      } else if (command == "Ki_az") {
+        Ki_az = value;
+      } else if (command == "Kd_az") {
+        Kd_az = value;
+      } else if (command == "Kp_alt") {
+        Kp_alt = value;
+      } else if (command == "Ki_alt") {
+        Ki_alt = value;
+      } else if (command == "Kd_alt") {
+        Kd_alt = value;
+      }
+    }
   }
 }
 
 // Function to calculate PID output
 int calculatePIDX(int currentError) {
-  double errorX = setPoint - currentError;
+  errorX = setPoint - currentError;
   integralX += errorX;
-  squaredIntegralX += errorX * errorX;
+  squaredIntegralX += errorX * errorX + 100;
 
   // Anti-windup (optional): Limit the integral term
   if (integralX > 500) {
@@ -175,21 +197,20 @@ int calculatePIDX(int currentError) {
     integralX = -500;
   }
 
-  if (squaredIntegralX > 1000) { 
-    squaredIntegralX = 1000;
-  } else if (squaredIntegralX < -1000) {
-    squaredIntegralX = -1000;
+  if (squaredIntegralX > 500) {
+    squaredIntegralX = 500;
+  } else if (squaredIntegralX < -500) {
+    squaredIntegralX = -500;
   }
 
   derivativeX = (a1 * errorX) + (a0 * previousErrorX) - (b1 * derivativeX) - (b0 * previousDerivativeX); /*y(k) = a1*u1+a0*u2-b1*y1-b0*y2;*/
-
   // PID formula
   //double outputX = Kp_az * errorX + Ki_az * integralX + Kd_az * derivativeX;
-  double outputX = Kp_az * errorX + Ki_az * integralX + Kd_az * derivativeX/* + Ki_az * squaredIntegralX*/;
+  double outputX = Kp_az * errorX + Ki_az * integralX + Kd_az * derivativeX /*+ Ki_az * squaredIntegralX*/;
 
   // Save current error and derivative for the next iteration
   previousErrorX = errorX;
-  previousDerivativeX = derivativeX; 
+  previousDerivativeX = derivativeX;
 
   // Convert the output to a step size
   return static_cast<int>(outputX);
@@ -202,12 +223,12 @@ int calculatePIDY(int currentError) {
   squaredIntegralX += errorY * errorY + 80;
 
   // Anti-windup (optional): Limit the integral term
-  if (integralY > 500) {
+  if (integralY > 600) {
     integralY = 500;
-  } else if (integralY < -500) {
+  } else if (integralY < -600) {
     integralY = -500;
   }
-  if (squaredIntegralY > 1000) { 
+  if (squaredIntegralY > 1000) {
     squaredIntegralY = 0;
   } else if (squaredIntegralY < -1000) {
     squaredIntegralY = 0;
@@ -220,7 +241,7 @@ int calculatePIDY(int currentError) {
 
   // Save current error for the next iteration
   previousErrorY = errorY;
-  previousDerivativeY = derivativeY; 
+  previousDerivativeY = derivativeY;
 
   // Convert the output to a step size
   return static_cast<int>(outputY);
@@ -229,58 +250,58 @@ int calculatePIDY(int currentError) {
 // Function to control the stepper motor based on the frequency
 void controlStepperAZ(int pidOutputAZ) {
   sixteenStepAZ();
-  
+
   digitalWrite(dirPinAZ, (pidOutputAZ >= 0) ? HIGH : LOW);
-  lastDirectionX = (pidOutputAZ >= 0) ? HIGH : LOW; 
-  
-//  if(abs(pidOutputAZ) > 400){
-//    digitalWrite(stepPinAZ, LOW);
-//  }
+  lastDirectionX = (pidOutputAZ >= 0) ? HIGH : LOW;
+
+  //  if(abs(pidOutputAZ) > 400){
+  //    digitalWrite(stepPinAZ, LOW);
+  //  }
   float k = 0.5;
   //float azFreq = 600 * (1 - exp(-k * abs(pidOutputAZ))); // Calculate azimuth frequency
-  float azFreq = ((abs(pidOutputAZ) / 100.0) * 3250);  
+  float azFreq = ((abs(pidOutputAZ) / 100.0) * 3000);
   float intervalAZ = (azFreq > 0) ? 1000000 / azFreq : MAX_INTERVAL;
   //Serial.print("Az Frequency: ");
-  Serial.print(azFreq);
-  Serial.print("\t");
+  //Serial.print(azFreq);
+  //Serial.print("\t");
 
   timerAlarmWrite(azTimer, intervalAZ, true);
 }
 
 void controlStepperALT(int pidOutputALT) {
   sixteenStepALT();
-  
+
   digitalWrite(dirPinALT, (pidOutputALT >= 0) ? HIGH : LOW);
   lastDirectionY = (pidOutputALT >= 0) ? HIGH : LOW;
 
-//  if(abs(pidOutputALT) > 400){
-//    digitalWrite(stepPinALT, LOW);
-//   }
-  float k = 0.5;    
-  //float altFreq = 600 * (1 - exp(-k * abs(pidOutputALT)));     
-  float altFreq = (abs(pidOutputALT) / 100.0) * 3250; // Linearly maps 0-100 to 0-400Hz
+  //  if(abs(pidOutputALT) > 400){
+  //    digitalWrite(stepPinALT, LOW);
+  //   }
+  float k = 0.5;
+  //float altFreq = 600 * (1 - exp(-k * abs(pidOutputALT)));
+  float altFreq = (abs(pidOutputALT) / 100.0) * 3000; // Linearly maps 0-100 to 0-400Hz
 
   float intervalALT = (altFreq > 0) ? 1000000 / altFreq : MAX_INTERVAL;
   //Serial.print("Alt Freq: ");
-  Serial.println(altFreq);
+  //Serial.println(altFreq);
   timerAlarmWrite(altTimer, intervalALT, true);
 }
 
 
 void findMarkerX() {
-    digitalWrite(dirPinAZ, lastDirectionX);
-    int scanFreq = 1500;
-    float intervalAZ = (scanFreq > 0) ? 1000000 / scanFreq : MAX_INTERVAL;
-    timerAlarmWrite(azTimer, intervalAZ, true);
-    lastDirectionX = !lastDirectionX;
+  digitalWrite(dirPinAZ, lastDirectionX);
+  int scanFreq = 1;
+  float intervalAZ = (scanFreq > 0) ? 1000000 / scanFreq : 100;
+  timerAlarmWrite(azTimer, intervalAZ, true);
+  lastDirectionX = !lastDirectionX;
 }
 
 void findMarkerY() {
-    digitalWrite(dirPinALT, lastDirectionY);
-    int scanFreq = 800; 
-    float intervalALT = (scanFreq > 0) ? 1000000 / scanFreq : MAX_INTERVAL;
-    timerAlarmWrite(altTimer, intervalALT, true);
-    lastDirectionY = !lastDirectionY;
+  digitalWrite(dirPinALT, lastDirectionY);
+  int scanFreq = 1;
+  float intervalALT = (scanFreq > 0) ? 1000000 / scanFreq : 100;
+  timerAlarmWrite(altTimer, intervalALT, true);
+  lastDirectionY = !lastDirectionY;
 }
 
 
