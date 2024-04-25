@@ -30,15 +30,15 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 static int MAX_INTERVAL = 250000;
 
 // PID variables: ALT (adjust these to fine-tune)
-double Kp_alt = 0.69;  // Proportional gain 0.55
-double Ki_alt = 0.065;  // Integral gain 0.0475
-double Kd_alt = 0.07;  // Derivative gain 0.055
+double Kp_alt = 1.54;  // Proportional gain 0.69 1.45
+double Ki_alt = 0.095;  // Integral gain 0.065 0.095
+double Kd_alt = 0.195;  // Derivative gain 0.07 0.195 //.25
 
 // PID variables: AZ (adjust these to fine-tune)
 
-double Kp_az = 0.52;/*0.52;  // Proportional gain*/
-double Ki_az = 0.0475;/*0.0475;  // Integral gain*/
-double Kd_az = 0.052; //0.055;/*0.052;  // Derivative gain*/
+double Kp_az = 1.65;/*0.52;  // Proportional gain  1.6 */
+double Ki_az = 0.068;/*0.0475;  // Integral gain 0.087*/
+double Kd_az = 0.156; //0.055;/*0.052;  // Derivative gain 0.1 */ 
 
 double a1 = 25.58; /*derivative calc constant 25.58*/
 double a0 = -25.58; /*derivative calc constant -25.58*/
@@ -147,12 +147,16 @@ void loop() {
       //      Serial.println(dist_y);
 
       // Calculate PID output
+      if(abs(dist_y) < 3){dist_y = 0;}
       pidOutputAZ = calculatePIDX(dist_x);
+      pidOutputALT = calculatePIDY(dist_y);
 #if PRINTING
       Serial.print(pidOutputAZ);
       Serial.print("\t");
+      Serial.print(pidOutputALT);
+      Serial.print("\t");
 #endif
-      pidOutputALT = calculatePIDY(dist_y);
+      
 
       if (abs(pidOutputAZ) > 2000 || abs(pidOutputALT) > 1500) {
         digitalWrite(lasPin, LOW);
@@ -263,7 +267,7 @@ void controlStepperAZ(int pidOutputAZ) {
   //  if(abs(pidOutputAZ) > 400){
   //    digitalWrite(stepPinAZ, LOW);
   //  }
-  float azFreq = ((abs(pidOutputAZ) / 100.0) * 3250);
+  float azFreq = ((abs(pidOutputAZ) / 100.0) * 3350);
   float intervalAZ = (azFreq > 0) ? 1000000 / azFreq : MAX_INTERVAL;
   //Serial.print("Az Frequency: ");
 #if PRINTING
@@ -282,9 +286,8 @@ void controlStepperALT(int pidOutputALT) {
   //  if(abs(pidOutputALT) > 400){
   //    digitalWrite(stepPinALT, LOW);
   //   }
-
-  float altFreq = (abs(pidOutputALT) / 100.0) * 3000; // Linearly maps 0-100 to 0-400Hz
-
+  float altFreq = (abs(pidOutputALT) / 100.0) * 3350; // Linearly maps 0-100 to 0-400Hz
+  // if(abs(pidOutputALT) < 7){altFreq = 0;}
   float intervalALT = (altFreq > 0) ? 1000000 / altFreq : MAX_INTERVAL;
   //Serial.print("Alt Freq: ");
 #if PRINTING
